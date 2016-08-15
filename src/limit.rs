@@ -6,7 +6,7 @@ enum LimiterState {
 }
 
 #[derive(Debug)]
-struct RateLimiter {
+pub struct RateLimiter {
     time: f64,
     state: LimiterState,
     repeat_delay: Option<f64>,
@@ -16,9 +16,13 @@ struct RateLimiter {
 impl RateLimiter {
     pub fn new(rate: f64, delay: Option<f64>) -> Self {
         if let Some(d) = delay {
-            if d < 0f64 { panic!("Cannot wait a negative number. Delay={}", d)}
+            if d < 0f64 {
+                panic!("Cannot wait a negative number. Delay={}", d)
+            }
         }
-        if rate < 0f64 { panic!("Cannot wait a negative number. Rate={}", rate)}
+        if rate < 0f64 {
+            panic!("Cannot wait a negative number. Rate={}", rate)
+        }
 
         RateLimiter {
             time: 0f64,
@@ -30,7 +34,7 @@ impl RateLimiter {
 
     pub fn elapsed(&mut self, dt: f64) {
         if self.state == LimiterState::Off {
-            return
+            return;
         }
         self.time += dt;
     }
@@ -45,7 +49,7 @@ impl RateLimiter {
                 self.do_event();
                 Some(())
             }
-            false => None
+            false => None,
         }
     }
 
@@ -78,14 +82,14 @@ impl RateLimiter {
                         }
                     }
                 }
-            },
+            }
             LimiterState::Repeat => {
                 if self.time > self.repeat_rate {
                     true
                 } else {
                     false
                 }
-            },
+            }
         }
     }
 }
