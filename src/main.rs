@@ -171,34 +171,34 @@ impl Tetromino {
     pub fn blocks(&self) -> Vec<Block> {
         let color = self.color();
         let points: Vec<Point> = match self.shape {
-            Shape::O => {
-                vec![
+                Shape::O => {
+                    vec![
                 Point {x: self.origin.x, y: self.origin.y},
                 Point {x: self.origin.x - 1, y: self.origin.y},
                 Point {x: self.origin.x , y: self.origin.y - 1},
                 Point {x: self.origin.x - 1, y: self.origin.y - 1},
             ]
-            }
-            Shape::I => {
-                vec![
+                }
+                Shape::I => {
+                    vec![
                     Point {x: self.origin.x - 1, y: self.origin.y + 1 },
                     Point {x: self.origin.x - 1, y: self.origin.y },
                     Point {x: self.origin.x - 1, y: self.origin.y - 1},
                     Point {x: self.origin.x - 1, y: self.origin.y - 2},
                 ]
-            }
-            Shape::T => {
-                vec![
+                }
+                Shape::T => {
+                    vec![
                     Point {x: self.origin.x, y: self.origin.y},
                     Point {x: self.origin.x , y: self.origin.y + 1},
                     Point {x: self.origin.x -1 , y: self.origin.y },
                     Point {x: self.origin.x +1 , y: self.origin.y },
                 ]
+                }
             }
-        }.iter().map(|p| {
-            rotate(&p, &self.origin, &RotationMatrix::orient(&self.orientation))
-
-        }).collect();
+            .iter()
+            .map(|p| rotate(&p, &self.origin, &RotationMatrix::orient(&self.orientation)))
+            .collect();
 
         points.iter()
             .map(|point| {
@@ -428,28 +428,25 @@ enum Slide {
     Right,
 }
 
+#[derive(Debug)]
+pub enum KeyAction {
+    Press,
+    Release,
+    Unknown,
+}
+
 struct Game {
     gameboard: GameBoard,
     unit_width: f64,
+    slide_timer: limit::RateLimiter,
+    rotate_timer: limit::RateLimiter,
     time_between_gravity: f64,
     time_between_down_speed: f64,
     time_since_gravity: f64,
-    time_between_slides: f64,
-    time_since_slide: f64,
-    time_between_rotate: f64,
-    time_since_rotate: f64,
     active_piece: Tetromino,
     ghost_piece: Tetromino,
-    up: bool,
-    down: bool,
-    left: bool,
-    right: bool,
-    space: bool,
-    up_pressed: bool,
-    down_pressed: bool,
-    left_pressed: bool,
-    right_pressed: bool,
-    space_pressed: bool,
+    key_mapping: input::KeyMap,
+    command_state: input::CommandState,
     tetromino_disttribution: Vec<Weighted<Shape>>,
     rng: rand::ThreadRng,
 }
@@ -462,40 +459,30 @@ impl Game {
                 Weighted { weight: 1, item: Shape::I },
                 Weighted { weight: 1, item: Shape::T },
             );
+        let mut key_map = input::KeyMap::new();
+        key_map.insert(Key::Up, input::Command::RotateClockwise);
+        key_map.insert(Key::Down, input::Command::DownFast);
+        key_map.insert(Key::Left, input::Command::SlideLeft);
+        key_map.insert(Key::Right, input::Command::SlideRight);
+        key_map.insert(Key::Space, input::Command::Lock);
 
         Game {
             gameboard: GameBoard::new(10, 20),
             unit_width: 25f64,
+            slide_timer: limit::RateLimiter::new(0.05f64, Some(0.3f64)),
+            rotate_timer: limit::RateLimiter::new(0.4f64, Some(0.4f64)),
+
             time_between_gravity: 0.5f64,
             time_between_down_speed: 0.05f64,
             time_since_gravity: 0f64,
-            time_between_slides: 0.05f64,
-            time_since_slide: 0f64,
-            time_between_rotate: 0.1f64,
-            time_since_rotate: 0f64,
+            key_mapping: key_map,
+            command_state: input::CommandState::new(),
             active_piece: Tetromino::new(),
             ghost_piece: Tetromino::new(),
-            up: false,
-            down: false,
-            left: false,
-            right: false,
-            space: false,
-            up_pressed: false,
-            down_pressed: false,
-            left_pressed: false,
-            right_pressed: false,
-            space_pressed: false,
             tetromino_disttribution: tetromino_choice,
             rng: rand::thread_rng(),
         }
-    }
 
-    fn clear_input(&mut self) {
-        self.up_pressed = false;
-        self.down_pressed = false;
-        self.left_pressed = false;
-        self.right_pressed = false;
-        self.space_pressed = false;
     }
 
     fn new_piece(&mut self) -> Tetromino {
@@ -505,48 +492,67 @@ impl Game {
     }
 
     fn slide(&mut self, dt: f64) {
-        self.time_since_slide += dt;
-        if self.time_since_slide > self.time_between_slides {
-            self.time_since_slide = 0f64;
-            match (self.left || self.left_pressed, self.right || self.right_pressed) {
-                (true, true) => {}
-                (false, false) => {}
-                (true, false) => {
-                    if self.gameboard.check_piece(&self.active_piece, &Point::new(-1, 0)) {
-                        self.active_piece.slide(Slide::Left);
-                        self.ghost_piece = self.ghost(&self.active_piece);
+        self.slide_timer.elapsed(dt);
+        match self.command_state.do_slide() {
+            Some(direction) => {
+                match self.slide_timer.get_event() {
+                    Some(_) => {
+                        match direction {
+                            input::SlideDirection::Left => {
+                                if self.gameboard
+                                    .check_piece(&self.active_piece, &Point::new(-1, 0)) {
+                                    self.active_piece.slide(Slide::Left);
+                                }
+                            }
+                            input::SlideDirection::Right => {
+                                if self.gameboard
+                                    .check_piece(&self.active_piece, &Point::new(1, 0)) {
+                                    self.active_piece.slide(Slide::Right);
+                                }
+                            }
+                        }
                     }
+                    None => {} //Timer says wait
                 }
-                (false, true) => {
-                    if self.gameboard.check_piece(&self.active_piece, &Point::new(1, 0)) {
-                        self.active_piece.slide(Slide::Right);
-                        self.ghost_piece = self.ghost(&self.active_piece);
-                    }
-                }
+                self.ghost_piece = self.ghost(&self.active_piece);
             }
-            self.clear_input();
+            None => self.slide_timer.reset(),
         }
     }
 
     fn rotate(&mut self, dt: f64) {
-        self.time_since_rotate += dt;
-        if self.time_since_rotate > self.time_between_rotate {
-            self.time_since_rotate = 0f64;
-            if self.up || self.up_pressed {
-                self.active_piece.rotate_clockwise();
+        self.rotate_timer.elapsed(dt);
+        match self.command_state.do_rotate() {
+            Some(direction) => {
+                match self.rotate_timer.get_event() {
+                    Some(_) => {
+                        match direction {
+                            input::RotateDirection::Clockwise => {
+                                self.active_piece.rotate_clockwise();
+                            }
+                            input::RotateDirection::CounterClockwise => {
+                                // TODO
+                                // self.active_piece.rotate_clockwise();
+                                // self.ghost_piece = self.ghost(&self.active_piece);
+                            }
+                        }
+                    }
+                    None => {} //Timer says wait
+                }
                 self.ghost_piece = self.ghost(&self.active_piece);
             }
-            self.clear_input();
+            None => {
+                self.rotate_timer.reset();
+            }
         }
     }
 
 
     fn gravity(&mut self, dt: f64) {
         self.time_since_gravity += dt;
-        let down_timer = if self.down {
-            self.time_between_down_speed
-        } else {
-            self.time_between_gravity
+        let down_timer = match self.command_state.get_drop_speed() {
+            input::DropSpeed::Fast => self.time_between_down_speed,
+            input::DropSpeed::Slow => self.time_between_gravity,
         };
         if self.time_since_gravity > down_timer {
             self.time_since_gravity = 0f64;
@@ -574,57 +580,25 @@ impl Game {
         self.gameboard.add_blocks(&self.active_piece.blocks());
         self.active_piece.state = TetronimoState::Nonexistant;
         self.gameboard.wipe_full_rows();
-        self.clear_input();
+        self.command_state.clear_state();
     }
 
+
     fn on_input(&mut self, inp: &Input) {
-        match *inp {
-            Input::Press(but) => {
-                match but {
-                    Button::Keyboard(Key::Up) => {
-                        self.up = true;
-                        self.up_pressed = true;
-                    }
-                    Button::Keyboard(Key::Down) => {
-                        self.down = true;
-                        self.down_pressed = true;
-                    }
-                    Button::Keyboard(Key::Left) => {
-                        self.left = true;
-                        self.left_pressed = true;
-                    }
-                    Button::Keyboard(Key::Right) => {
-                        self.right = true;
-                        self.right_pressed = true;
-                    }
-                    Button::Keyboard(Key::Space) => {
-                        self.space = true;
-                        self.space_pressed = true;
-                    }
-                    _ => {}
-                }
+        let (command, action) = match *inp {
+            Input::Press(Button::Keyboard(button)) => {
+                (self.key_mapping.get(&button), KeyAction::Press)
             }
-            Input::Release(but) => {
-                match but {
-                    Button::Keyboard(Key::Up) => {
-                        self.up = false;
-                    }
-                    Button::Keyboard(Key::Down) => {
-                        self.down = false;
-                    }
-                    Button::Keyboard(Key::Left) => {
-                        self.left = false;
-                    }
-                    Button::Keyboard(Key::Right) => {
-                        self.right = false;
-                    }
-                    Button::Keyboard(Key::Space) => {
-                        self.space = false;
-                    }
-                    _ => {}
-                }
+            Input::Release(Button::Keyboard(button)) => {
+                (self.key_mapping.get(&button), KeyAction::Release)
             }
-            _ => {}
+            _ => (None, KeyAction::Unknown),
+        };
+        info!("{:?} {:?}", command, action);
+        match (command, action) {
+            (Some(c), KeyAction::Press) => self.command_state.key_press(*c),
+            (Some(c), KeyAction::Release) => self.command_state.key_release(*c),
+            (_, _) => {}
         }
     }
 
@@ -660,14 +634,14 @@ fn main() {
             Event::Update(UpdateArgs { dt }) => {
                 match game.active_piece.state {
                     TetronimoState::Falling => {
-                        if game.space_pressed {
-                            game.clear_input();
+                        if game.command_state.lock() {
                             game.active_piece = game.ghost_piece.clone();
                             game.lock();
+                        } else {
+                            game.gravity(dt);
+                            game.slide(dt);
+                            game.rotate(dt);
                         }
-                        game.gravity(dt);
-                        game.slide(dt);
-                        game.rotate(dt);
                     }
                     TetronimoState::Nonexistant => {
                         game.active_piece = game.new_piece();
