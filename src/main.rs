@@ -20,7 +20,6 @@ mod input;
 type Result<T> = std::result::Result<T, error::Error>;
 
 
-
 impl Point {
     pub fn new(x: i32, y: i32) -> Self {
         Point { x: x, y: y }
@@ -387,7 +386,7 @@ enum TetronimoState {
     Nonexistant,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Shape {
     O,
     T,
@@ -435,7 +434,7 @@ pub enum KeyAction {
     Unknown,
 }
 
-struct Game {
+struct Game<'a> {
     gameboard: GameBoard,
     unit_width: f64,
     slide_timer: limit::RateLimiter,
@@ -447,25 +446,20 @@ struct Game {
     ghost_piece: Tetromino,
     key_mapping: input::KeyMap,
     command_state: input::CommandState,
-    tetromino_disttribution: Vec<Weighted<Shape>>,
+    tetromino_distribution: WeightedChoice<'a, Shape>,
     rng: rand::ThreadRng,
 }
 
 
-impl Game {
-    fn new() -> Self {
-        let tetromino_choice = vec!(
-                Weighted { weight: 5, item: Shape::O },
-                Weighted { weight: 1, item: Shape::I },
-                Weighted { weight: 1, item: Shape::T },
-            );
+impl<'a> Game<'a> {
+    fn new(tetromino_choice: &'a mut Vec<Weighted<Shape>>) -> Self {
         let mut key_map = input::KeyMap::new();
         key_map.insert(Key::Up, input::Command::RotateClockwise);
         key_map.insert(Key::Down, input::Command::DownFast);
         key_map.insert(Key::Left, input::Command::SlideLeft);
         key_map.insert(Key::Right, input::Command::SlideRight);
         key_map.insert(Key::Space, input::Command::Lock);
-
+        let wc = WeightedChoice::new(tetromino_choice);
         Game {
             gameboard: GameBoard::new(10, 20),
             unit_width: 25f64,
@@ -479,15 +473,14 @@ impl Game {
             command_state: input::CommandState::new(),
             active_piece: Tetromino::new(),
             ghost_piece: Tetromino::new(),
-            tetromino_disttribution: tetromino_choice,
+            tetromino_distribution: wc,
             rng: rand::thread_rng(),
         }
 
     }
 
     fn new_piece(&mut self) -> Tetromino {
-        let wc = WeightedChoice::new(&mut self.tetromino_disttribution);
-        let shape = wc.ind_sample(&mut self.rng);
+        let shape = self.tetromino_distribution.ind_sample(&mut self.rng);
         Tetromino::new_shape(shape)
     }
 
@@ -601,33 +594,25 @@ impl Game {
             (_, _) => {}
         }
     }
-
-
-    fn on_update(&mut self, upd: UpdateArgs) {}
-
-    //     fn on_draw(&mut self, ren: RenderArgs, e: PistonWindow) {
-    //         e.draw_2d(&ren.viewport(), |c, g| {
-    //             clear([0.0, 0.0, 0.0, 1.0], g);
-    //             let center = c.transform.trans((ren.width / 2) as f64, (ren.height / 2) as f64);
-    //             let square = rectangle::square(0.0, 0.0, 100.0);
-    //             let red = [1.0, 0.0, 0.0, 1.0];
-    //             rectangle(red, square, c.transform, g); // We translate the rectangle slightly so that it's centered; otherwise only the top left corner would be centered
-    //
-    //         });
-    //     }
 }
 
 
+use std::collections::BTreeMap;
 fn main() {
 
-
     env_logger::init().unwrap();
-    let mut game = Game::new();
+
+    let mut tetromino_choice = vec!(
+            Weighted { weight: 1, item: Shape::O },
+            Weighted { weight: 1, item: Shape::I },
+            Weighted { weight: 1, item: Shape::T },
+    );
+
+    let mut game = Game::new(&mut tetromino_choice);
     let mut window: PistonWindow = WindowSettings::new("Miranda Tetris", [540, 580])
         .exit_on_esc(true)
         .build()
         .unwrap();
-    let mut block_x = 0f64;
     while let Some(e) = window.next() {
         debug!("{:?}", e);
         match e {
@@ -651,18 +636,21 @@ fn main() {
                 }
             }
             Event::Input(ref input) => game.on_input(input),
+            Event::Render(_) => {
+                window.draw_2d(&e, |c, g| {
+                    clear([0.5; 4], g);
+                    game.gameboard.render(g, c.transform, game.unit_width, 20f64, 500f64);
+                    for block in game.ghost_piece.blocks() {
+                        game.gameboard
+                            .render_block(g, c.transform, game.unit_width, 20f64, 500f64, block);
+                    }
+                    for block in game.active_piece.blocks() {
+                        game.gameboard
+                            .render_block(g, c.transform, game.unit_width, 20f64, 500f64, block);
+                    }
+                });
+            }
             _ => {}
         }
-        block_x += 1f64;
-        window.draw_2d(&e, |c, g| {
-            clear([0.5; 4], g);
-            game.gameboard.render(g, c.transform, game.unit_width, 20f64, 500f64);
-            for block in game.ghost_piece.blocks() {
-                game.gameboard.render_block(g, c.transform, game.unit_width, 20f64, 500f64, block);
-            }
-            for block in game.active_piece.blocks() {
-                game.gameboard.render_block(g, c.transform, game.unit_width, 20f64, 500f64, block);
-            }
-        });
     }
 }
