@@ -609,7 +609,7 @@ fn main() {
     );
 
     let mut game = Game::new(&mut tetromino_choice);
-    let mut window: PistonWindow = WindowSettings::new("Miranda Tetris", [540, 580])
+    let mut window: PistonWindow = WindowSettings::new("Tetris", [540, 580])
         .exit_on_esc(true)
         .build()
         .unwrap();
