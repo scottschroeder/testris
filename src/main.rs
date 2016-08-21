@@ -50,12 +50,11 @@ fn main() {
     );
 
     let mut game = game::Game::new(&mut tetromino_choice);
-    let mut window: PistonWindow = WindowSettings::new("Miranda Tetris", [540, 580])
+    let mut window: PistonWindow = WindowSettings::new("Tetris", [540, 580])
         .exit_on_esc(true)
         .build()
         .unwrap();
     while let Some(e) = window.next() {
-        debug!("{:?}", e);
         match e {
             Event::Update(UpdateArgs { dt }) => game.on_update(dt),
             Event::Input(ref input) => game.on_input(input),
@@ -65,7 +64,7 @@ fn main() {
                     game.on_render(g, c.transform);
                 });
             }
-            _ => {}
+            _ => debug!("Unknown Window Event {:?}", e)
         }
     }
 }

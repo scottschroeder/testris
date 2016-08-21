@@ -44,7 +44,7 @@ impl<'a> Game<'a> {
         key_map.insert(Key::Space, input::Command::Lock);
         let wc = WeightedChoice::new(tetromino_choice);
         Game {
-            gameboard: GameBoard::new(10, 21, Pixel::new(20f64, 500f64)),
+            gameboard: GameBoard::new(10, 22, 2, Pixel::new(20f64, 500f64)),
             unit_width: 25f64,
             slide_timer: limit::RateLimiter::new(0.05f64, Some(0.3f64)),
             rotate_timer: limit::RateLimiter::new(0.4f64, Some(0.4f64)),
@@ -65,7 +65,7 @@ impl<'a> Game<'a> {
         debug!("Generating new Tetromino: {:?}", shape);
         let mut new_piece = Tetromino::new_shape(shape);
         new_piece.state = TetronimoState::Falling;
-        new_piece.put(Point::new(5, 15));
+        new_piece.put(Point::new(5, 21));
         new_piece
     }
 
@@ -189,15 +189,21 @@ impl<'a> Game<'a> {
         where G: Graphics
     {
         let Pixel { x, y } = self.gameboard.point;
+        let height = self.gameboard.height() as i32;
+
         for block in self.gameboard.blocks() {
             self.render_block(g, view, x, y, block);
         }
 
         for block in self.active_piece.blocks() {
-            self.render_block(g, view, x, y, block);
+            if block.point.y < height {
+                self.render_block(g, view, x, y, block);
+            }
         }
         for block in self.ghost_piece.blocks() {
-            self.render_block(g, view, x, y, block);
+            if block.point.y < height {
+                self.render_block(g, view, x, y, block);
+            }
         }
     }
 

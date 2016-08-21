@@ -20,18 +20,24 @@ enum RowPopulation {
 pub struct GameBoard {
     size_x: usize,
     size_y: usize,
+    size_hidden: usize,
     blocks: Vec<Option<Color>>,
     pub point: Pixel,
 }
 
 impl GameBoard {
-    pub fn new(x: usize, y: usize, p: Pixel) -> Self {
+    pub fn new(x: usize, y: usize, h: usize, p: Pixel) -> Self {
         GameBoard {
             size_x: x,
             size_y: y,
             blocks: vec![None; x * y],
             point: p,
+            size_hidden: h,
         }
+    }
+
+    pub fn height(&self) -> usize {
+        self.size_y - self.size_hidden
     }
 
     fn copy_row(&mut self, lower: usize, upper: usize) {
@@ -150,7 +156,7 @@ impl GameBoard {
 
     pub fn blocks(&self) -> Vec<Block> {
         let mut result: Vec<Block> = Vec::with_capacity(self.size_x * self.size_y);
-        for jx in 0..self.size_y {
+        for jx in 0..self.height() {
             for ix in 0..self.size_x {
                 let p = Point {
                     x: ix as i32,
@@ -170,17 +176,17 @@ impl GameBoard {
 
 #[test]
 fn new_board() {
-    let a = GameBoard::new(2, 3, Pixel::new(0f64, 0f64));
+    let a = GameBoard::new(2, 3, 0, Pixel::new(0f64, 0f64));
     assert_eq!(6, a.blocks.len());
-    let b = GameBoard::new(20, 10, Pixel::new(0f64, 0f64));
+    let b = GameBoard::new(20, 10, 0, Pixel::new(0f64, 0f64));
     assert_eq!(200, b.blocks.len());
-    let c = GameBoard::new(12, 5, Pixel::new(0f64, 0f64));
+    let c = GameBoard::new(12, 5, 0, Pixel::new(0f64, 0f64));
     assert_eq!(60, c.blocks.len());
 }
 
 #[test]
 fn copy_rows() {
-    let mut board = GameBoard::new(2, 2, Pixel::new(0f64, 0f64));
+    let mut board = GameBoard::new(2, 2, 0, Pixel::new(0f64, 0f64));
     let c1 = Color::black();
     let c2 = Color::white();
     board.blocks = vec![None, Some(c1), Some(c2), None];
@@ -190,7 +196,7 @@ fn copy_rows() {
 
 #[test]
 fn row_status_check() {
-    let mut board = GameBoard::new(2, 3, Pixel::new(0f64, 0f64));
+    let mut board = GameBoard::new(2, 3, 0, Pixel::new(0f64, 0f64));
     let c1 = Color::black();
     board.blocks = vec![None, None, Some(c1), None, Some(c1), Some(c1)];
     assert_eq!(RowPopulation::Empty, board.row_status(0));
