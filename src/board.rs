@@ -75,6 +75,7 @@ impl GameBoard {
         let mut lower = 0;
         let mut upper = 0;
 
+
         while lower < self.size_y {
             if status[lower] == RowPopulation::Empty {
                 return;
