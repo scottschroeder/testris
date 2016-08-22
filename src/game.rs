@@ -1,31 +1,12 @@
-use std::collections::VecDeque;
-use std::cell::RefCell;
 use piston_window::*;
-use rand::distributions::{Weighted, WeightedChoice, IndependentSample};
-use rand;
-use rand::{thread_rng, Rng};
 use super::block::Block;
 use super::board::{GameBoard, Pixel};
-use super::tetronimo::{SlideDirection, Shape, Tetromino, TetronimoState};
+use super::tetronimo::{SlideDirection, Shape, Tetromino, TetrominoGenerator, TetronimoState};
 use super::transform::{RotationDirection, Point};
 use super::input;
 use super::limit;
 
 
-fn draw_pieces(rng: &mut rand::ThreadRng) -> Vec<Shape> {
-    let mut new_pieces = vec![
-        Shape::O,
-        Shape::I,
-        Shape::T,
-        Shape::L,
-        Shape::J,
-        Shape::S,
-        Shape::Z,
-    ];
-    rng.shuffle(new_pieces.as_mut_slice());
-    info!("Drew random tetronimos {:?}", new_pieces);
-    new_pieces
-}
 
 #[derive(Debug, Clone)]
 enum KeyAction {
@@ -37,17 +18,16 @@ enum KeyAction {
 pub struct Game {
     gameboard: GameBoard,
     upcoming: GameBoard,
+    tetronimo_generator: TetrominoGenerator,
     unit_width: f64,
     slide_timer: limit::RateLimiter,
     rotate_timer: limit::RateLimiter,
     gravity_timer: limit::RateLimiter,
     fast_fall_timer: limit::RateLimiter,
-    upcoming_queue: RefCell<VecDeque<Tetromino>>,
     active_piece: Tetromino,
     ghost_piece: Tetromino,
     key_mapping: input::KeyMap,
     command_state: input::CommandState,
-    rng: RefCell<rand::ThreadRng>,
 }
 
 
@@ -62,53 +42,23 @@ impl Game {
         Game {
             gameboard: GameBoard::new(10, 22, 2, Pixel::new(20f64, 500f64)),
             upcoming: GameBoard::new(6, 9, 0, Pixel::new(400f64, 500f64)),
+            tetronimo_generator: TetrominoGenerator::new(),
             unit_width: 25f64,
             slide_timer: limit::RateLimiter::new(0.05f64, Some(0.3f64)),
             rotate_timer: limit::RateLimiter::new(0.4f64, Some(0.4f64)),
             gravity_timer: limit::RateLimiter::new(0.5f64, None),
             fast_fall_timer: limit::RateLimiter::new(0.05f64, None),
-            upcoming_queue: RefCell::new(VecDeque::new()),
             key_mapping: key_map,
             command_state: input::CommandState::new(),
             active_piece: Tetromino::new(),
             ghost_piece: Tetromino::new(),
-            rng: RefCell::new(rand::thread_rng()),
         }
 
     }
 
-    fn upcoming_queue_length(&self) -> usize {
-        let queue = self.upcoming_queue.borrow();
-        queue.len()
-    }
-
-    fn extend_queue(&self) {
-        let mut rng = self.rng.borrow_mut();
-        let new_shapes = draw_pieces(&mut rng);
-        let mut queue = self.upcoming_queue.borrow_mut();
-        for shape in new_shapes {
-            queue.push_back(Tetromino::new_shape(shape))
-        }
-    }
-
-    fn peek_queue(&self, i: usize) -> Tetromino {
-        if i >= self.upcoming_queue_length() {
-            self.extend_queue();
-        }
-        let queue = self.upcoming_queue.borrow();
-        queue.get(i).unwrap().clone()
-    }
-
-    fn pop_queue(&mut self) -> Tetromino {
-        if self.upcoming_queue_length() == 0 {
-            self.extend_queue();
-        }
-        let mut queue = self.upcoming_queue.borrow_mut();
-        queue.pop_front().unwrap()
-    }
 
     fn new_piece(&mut self) -> Tetromino {
-        let mut new_piece = self.pop_queue();
+        let mut new_piece = self.tetronimo_generator.pop();
         new_piece.state = TetronimoState::Falling;
         new_piece.put(Point::new(5, 21));
         new_piece
@@ -124,7 +74,7 @@ impl Game {
             if self.gameboard.check_piece(&test_piece) {
                 self.active_piece = test_piece;
                 self.ghost_piece = self.ghost(&self.active_piece);
-                return
+                return;
             }
         }
     }
@@ -134,9 +84,7 @@ impl Game {
         let maybe_direction = self.command_state.do_slide();
         let mut test_piece = self.active_piece.clone();
         match (event, maybe_direction) {
-            (Some(_), Some(input::SlideDirection::Left)) => {
-                test_piece.slide(SlideDirection::Left)
-            }
+            (Some(_), Some(input::SlideDirection::Left)) => test_piece.slide(SlideDirection::Left),
             (Some(_), Some(input::SlideDirection::Right)) => {
                 test_piece.slide(SlideDirection::Right)
             }
@@ -258,8 +206,8 @@ impl Game {
         }
 
         for i in 0..3 {
-            let p = Point::new(3, 7 - i*3);
-            let mut upcoming_tetronimo = self.peek_queue(i as usize);
+            let p = Point::new(3, 7 - i * 3);
+            let mut upcoming_tetronimo = self.tetronimo_generator.peek(i as usize);
             upcoming_tetronimo.state = TetronimoState::Frozen;
             upcoming_tetronimo.translate(&p);
             for block in upcoming_tetronimo.blocks() {

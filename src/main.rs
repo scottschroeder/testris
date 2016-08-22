@@ -52,7 +52,7 @@ fn main() {
                     game.on_render(g, c.transform);
                 });
             }
-            _ => debug!("Unknown Window Event {:?}", e)
+            _ => debug!("Unknown Window Event {:?}", e),
         }
     }
 }

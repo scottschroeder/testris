@@ -1,7 +1,76 @@
+use rand;
+use rand::{thread_rng, Rng};
 use super::block::{self, Block};
 use super::transform::{self, Orientation, Point, RotationDirection};
 use super::tetriscolor::Color;
 use na::Origin;
+
+
+use std::collections::VecDeque;
+use std::cell::RefCell;
+
+fn draw_pieces(rng: &mut rand::ThreadRng) -> Vec<Shape> {
+    let mut new_pieces = vec![
+        Shape::O,
+        Shape::I,
+        Shape::T,
+        Shape::L,
+        Shape::J,
+        Shape::S,
+        Shape::Z,
+    ];
+    rng.shuffle(new_pieces.as_mut_slice());
+    info!("Drew random tetronimos {:?}", new_pieces);
+    new_pieces
+}
+
+
+pub struct TetrominoGenerator {
+    queue: RefCell<VecDeque<Tetromino>>,
+    rng: RefCell<rand::ThreadRng>,
+}
+
+
+impl TetrominoGenerator {
+    pub fn new() -> Self {
+        TetrominoGenerator {
+            queue: RefCell::new(VecDeque::new()),
+            rng: RefCell::new(rand::thread_rng()),
+        }
+    }
+
+    fn upcoming_queue_length(&self) -> usize {
+        let queue = self.queue.borrow();
+        queue.len()
+    }
+
+    fn extend(&self) {
+        let mut rng = self.rng.borrow_mut();
+        let new_shapes = draw_pieces(&mut rng);
+        let mut queue = self.queue.borrow_mut();
+        for shape in new_shapes {
+            queue.push_back(Tetromino::new_shape(shape))
+        }
+    }
+
+    pub fn peek(&self, i: usize) -> Tetromino {
+        if i >= self.upcoming_queue_length() {
+            self.extend();
+        }
+        let queue = self.queue.borrow();
+        queue.get(i).unwrap().clone()
+    }
+
+    pub fn pop(&mut self) -> Tetromino {
+        if self.upcoming_queue_length() == 0 {
+            self.extend();
+        }
+        let mut queue = self.queue.borrow_mut();
+        queue.pop_front().unwrap()
+    }
+}
+
+
 
 #[derive(Debug, Clone)]
 pub enum TetronimoState {
