@@ -44,7 +44,7 @@ impl Game {
             upcoming: GameBoard::new(6, 9, 0, Pixel::new(400f64, 500f64)),
             tetronimo_generator: TetrominoGenerator::new(),
             unit_width: 25f64,
-            slide_timer: limit::RateLimiter::new(0.05f64, Some(0.3f64)),
+            slide_timer: limit::RateLimiter::new(0.05f64, Some(0.17f64)),
             rotate_timer: limit::RateLimiter::new(0.4f64, Some(0.4f64)),
             gravity_timer: limit::RateLimiter::new(0.5f64, None),
             fast_fall_timer: limit::RateLimiter::new(0.05f64, None),
